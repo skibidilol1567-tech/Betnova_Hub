@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and balance information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "balance": { "type": "number", "description": "Balance in cents" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["uid", "email", "balance", "role"]
+    },
+    "Bet": {
+      "title": "Bet",
+      "description": "A bet placed on a specific market",
+      "type": "object",
+      "properties": {
+        "marketId": { "type": "string" },
+        "userId": { "type": "string" },
+        "side": { "type": "string", "enum": ["YES", "NO"] },
+        "amount": { "type": "number" },
+        "odds": { "type": "number" },
+        "status": { "type": "string", "enum": ["OPEN", "WON", "LOST"] },
+        "placedAt": { "type": "number" }
+      },
+      "required": ["marketId", "userId", "side", "amount", "odds", "status", "placedAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial transactions including card deposits",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["deposit"] },
+        "cardName": { "type": "string" },
+        "cardNumber": { "type": "string" },
+        "cardExpiry": { "type": "string" },
+        "cardCvv": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["userId", "amount", "type", "cardName", "cardNumber", "cardExpiry", "cardCvv", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/bets/{betId}": {
+      "schema": "Bet",
+      "description": "Global collection of all bets"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Global collection of all card transactions"
+    }
+  }
+}
