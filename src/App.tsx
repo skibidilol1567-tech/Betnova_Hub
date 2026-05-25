@@ -63,6 +63,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { BetMarket, ActiveBet, UserState, MarketCategory, LeaderboardEntry } from './types';
 import { auth, db, handleFirestoreError, OperationType } from './lib/firebase';
+import { getMockMarkets, getMockLeaderboard } from './mockData';
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -250,21 +251,48 @@ export default function App() {
     };
   }, [user.role]);
 
-  // Fetch markets from backend
+  // Fetch markets from backend with absolute client-side fallbacks for static deployments (e.g., Vercel)
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [marketsRes, leaderboardRes] = await Promise.all([
-          fetch('/api/markets'),
-          fetch('/api/leaderboard')
+          fetch('/api/markets').catch(() => null),
+          fetch('/api/leaderboard').catch(() => null)
         ]);
-        const marketsData = await marketsRes.json();
-        const leaderboardData = await leaderboardRes.json();
+
+        let marketsData: any = null;
+        let leaderboardData: any = null;
+
+        if (marketsRes && marketsRes.ok) {
+          const contentType = marketsRes.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            marketsData = await marketsRes.json().catch(() => null);
+          }
+        }
+
+        if (leaderboardRes && leaderboardRes.ok) {
+          const contentType = leaderboardRes.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            leaderboardData = await leaderboardRes.json().catch(() => null);
+          }
+        }
+
+        // Apply robust fallbacks if API is missing or returns invalid data on serverless environments like Vercel
+        if (!marketsData) {
+          console.info('Operating in static mode: Markets loaded from client-side fallback generator.');
+          marketsData = getMockMarkets();
+        }
+        if (!leaderboardData) {
+          console.info('Operating in static mode: Leaderboard loaded from client-side fallback generator.');
+          leaderboardData = getMockLeaderboard();
+        }
+
         setMarkets(marketsData);
         setLeaderboard(leaderboardData);
       } catch (error) {
-        console.error('Failed to fetch data:', error);
-        toast.error('Failed to load live data');
+        console.error('Failed to fetch data, falling back to local simulation:', error);
+        setMarkets(getMockMarkets());
+        setLeaderboard(getMockLeaderboard());
       } finally {
         setLoading(false);
       }
