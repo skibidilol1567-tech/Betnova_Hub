@@ -32,7 +32,12 @@ import {
   User as UserIcon,
   LogOut,
   ShieldCheck,
-  Eye
+  Eye,
+  Sun,
+  Moon,
+  Send,
+  MessageSquare,
+  Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -81,7 +86,7 @@ import {
 
 const INITIAL_BALANCE = 600000; // $6,000.00 in cents
 
-type ViewMode = 'Markets' | 'Portfolio' | 'Leaderboard' | 'Admin';
+type ViewMode = 'Markets' | 'Portfolio' | 'Leaderboard' | 'Admin' | 'Chat';
 
 const MarketImage = ({ src, alt }: { src: string; alt: string }) => {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -135,6 +140,48 @@ export default function App() {
     cvv: '',
     name: ''
   });
+
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('theme');
+      return stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  });
+
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [newMsgText, setNewMsgText] = useState('');
+  const [isChatSending, setIsChatSending] = useState(false);
+
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const [suggestionTitle, setSuggestionTitle] = useState('');
+  const [suggestionCategory, setSuggestionCategory] = useState<MarketCategory>('Sports');
+  const [suggestionDesc, setSuggestionDesc] = useState('');
+  const [isSubmittingSuggestion, setIsSubmittingSuggestion] = useState(false);
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  // Real-time Chat Subscription
+  useEffect(() => {
+    const unsubChat = onSnapshot(
+      query(collection(db, 'chat_messages'), orderBy('timestamp', 'asc')),
+      (snapshot) => {
+        setChatMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      },
+      (error) => {
+        console.error('Chat snapshot error:', error);
+      }
+    );
+    return () => unsubChat();
+  }, []);
 
   // Firebase Auth Listener
   useEffect(() => {
@@ -453,6 +500,69 @@ export default function App() {
     }
   };
 
+  const handleSendChatMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user.uid) {
+      setShowAuthModal(true);
+      toast.error('Please login to send a message');
+      return;
+    }
+    if (!newMsgText.trim() || isChatSending) return;
+    
+    setIsChatSending(true);
+    try {
+      const username = user.email ? user.email.split('@')[0] : 'Anonymous';
+      await addDoc(collection(db, 'chat_messages'), {
+        text: newMsgText.trim(),
+        userId: user.uid,
+        userEmail: user.email,
+        username: username,
+        timestamp: Date.now(),
+        userAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
+      });
+      setNewMsgText('');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      toast.error('Failed to send comment');
+    } finally {
+      setIsChatSending(false);
+    }
+  };
+
+  const handleSubmitSuggestion = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user.uid) {
+      setShowAuthModal(true);
+      toast.error('Please login to submit market suggestions');
+      return;
+    }
+    if (!suggestionTitle.trim() || isSubmittingSuggestion) return;
+    
+    setIsSubmittingSuggestion(true);
+    try {
+      await addDoc(collection(db, 'suggestions'), {
+        title: suggestionTitle.trim(),
+        category: suggestionCategory,
+        description: suggestionDesc.trim(),
+        userId: user.uid,
+        userEmail: user.email,
+        timestamp: Date.now(),
+        status: 'PENDING'
+      });
+      toast.success('Suggestion submitted successfully!', {
+        description: 'Our team will review your market idea shortly.'
+      });
+      setShowSuggestModal(false);
+      setSuggestionTitle('');
+      setSuggestionDesc('');
+    } catch (error) {
+      console.error('Failed to submit suggestion:', error);
+      toast.error('Failed to submit suggestion');
+    } finally {
+      setIsSubmittingSuggestion(false);
+    }
+  };
+
   const filteredMarkets = useMemo(() => {
     return markets.filter(m => {
       const matchesSearch = m.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -471,37 +581,43 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 text-[#0F172A] dark:text-slate-100 font-sans transition-colors duration-300">
       {/* Navigation */}
-      <nav className="border-b border-slate-200 sticky top-0 bg-white/80 backdrop-blur-xl z-50 shadow-sm">
+      <nav className="border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl z-50 shadow-sm transition-colors duration-300">
         <div className="max-w-[1440px] mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-12">
             <h1 className="text-3xl font-black tracking-tighter text-[#0052FF] flex items-center gap-2 cursor-pointer" onClick={() => { setViewMode('Markets'); setActiveCategory('All'); }}>
-              BET<span className="text-slate-900 font-light">NOVA</span>
+              BET<span className="text-slate-900 dark:text-slate-100 font-light">NOVA</span>
             </h1>
-            <div className="hidden md:flex items-center gap-10 text-sm font-bold text-slate-500 uppercase tracking-widest">
+            <div className="hidden md:flex items-center gap-10 text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               <button 
                 onClick={() => setViewMode('Markets')} 
-                className={`${viewMode === 'Markets' ? 'text-[#0052FF]' : 'hover:text-[#0052FF]'} transition-all flex items-center gap-2`}
+                className={`${viewMode === 'Markets' ? 'text-[#0052FF]' : 'hover:text-[#0052FF] text-slate-500 dark:text-slate-400'} transition-all flex items-center gap-2`}
               >
                 Markets
               </button>
               <button 
                 onClick={() => setViewMode('Portfolio')} 
-                className={`${viewMode === 'Portfolio' ? 'text-[#0052FF]' : 'hover:text-[#0052FF]'} transition-all flex items-center gap-2`}
+                className={`${viewMode === 'Portfolio' ? 'text-[#0052FF]' : 'hover:text-[#0052FF] text-slate-500 dark:text-slate-400'} transition-all flex items-center gap-2`}
               >
                 My Bets
               </button>
               <button 
                 onClick={() => setViewMode('Leaderboard')} 
-                className={`${viewMode === 'Leaderboard' ? 'text-[#0052FF]' : 'hover:text-[#0052FF]'} transition-all flex items-center gap-2`}
+                className={`${viewMode === 'Leaderboard' ? 'text-[#0052FF]' : 'hover:text-[#0052FF] text-slate-500 dark:text-slate-400'} transition-all flex items-center gap-2`}
               >
                 Leaderboard
+              </button>
+              <button 
+                onClick={() => setViewMode('Chat')} 
+                className={`${viewMode === 'Chat' ? 'text-[#0052FF]' : 'hover:text-[#0052FF] text-slate-500 dark:text-slate-400'} transition-all flex items-center gap-2`}
+              >
+                <MessageSquare className="w-4 h-4 text-[#0052FF]" /> Social Chat
               </button>
               {user.role === 'admin' && (
                 <button 
                   onClick={() => setViewMode('Admin')} 
-                  className={`${viewMode === 'Admin' ? 'text-[#0052FF]' : 'hover:text-[#0052FF]'} transition-all flex items-center gap-2`}
+                  className={`${viewMode === 'Admin' ? 'text-[#0052FF]' : 'hover:text-[#0052FF] text-slate-500 dark:text-slate-400'} transition-all flex items-center gap-2`}
                 >
                   <ShieldCheck className="w-4 h-4" /> Admin
                 </button>
@@ -510,6 +626,16 @@ export default function App() {
           </div>
           
             <div className="flex items-center gap-8">
+              {/* Dark Mode Toggle */}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setIsDarkMode(!isDarkMode)} 
+                className="rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 active:scale-95 transition-all"
+              >
+                {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-indigo-500" />}
+              </Button>
+
               {user.uid ? (
                 <div className="flex items-center gap-4">
                   <div className="flex flex-col items-end">
@@ -517,26 +643,26 @@ export default function App() {
                     <motion.div 
                       key={user.balance}
                       initial={{ scale: 1.1, color: '#0052FF' }}
-                      animate={{ scale: 1, color: '#0F172A' }}
-                      className="flex items-center gap-2 text-2xl font-black text-slate-900"
+                      animate={{ scale: 1, color: isDarkMode ? '#F1F5F9' : '#0F172A' }}
+                      className="flex items-center gap-2 text-2xl font-black text-slate-900 dark:text-white"
                     >
                       <Wallet className="w-5 h-5 text-[#0052FF]" />
                       <span className="font-mono tracking-tight">{formatCurrency(user.balance)}</span>
                     </motion.div>
                   </div>
                   <Button 
-                    className="rounded-2xl bg-[#0052FF] hover:bg-blue-700 active:scale-95 transition-all font-black px-8 h-12 shadow-lg shadow-blue-200"
+                    className="rounded-2xl bg-[#0052FF] hover:bg-blue-700 active:scale-95 transition-all font-black px-8 h-12 shadow-lg shadow-blue-200 dark:shadow-none"
                     onClick={() => setShowDepositModal(true)}
                   >
                     Deposit
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full hover:bg-red-50 hover:text-red-600 active:scale-90 transition-all">
+                  <Button variant="ghost" size="icon" onClick={handleLogout} className="rounded-full hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 active:scale-90 transition-all">
                     <LogOut className="w-5 h-5" />
                   </Button>
                 </div>
               ) : (
                 <Button 
-                  className="rounded-2xl bg-[#0052FF] hover:bg-blue-700 active:scale-95 transition-all font-black px-8 h-12 shadow-lg shadow-blue-200 flex items-center gap-2"
+                  className="rounded-2xl bg-[#0052FF] hover:bg-blue-700 active:scale-95 transition-all font-black px-8 h-12 shadow-lg shadow-blue-200 dark:shadow-none flex items-center gap-2"
                   onClick={() => { setAuthMode('login'); setShowAuthModal(true); }}
                 >
                   <UserIcon className="w-4 h-4" /> Login / Sign Up
@@ -549,13 +675,13 @@ export default function App() {
       <main className="max-w-[1440px] mx-auto p-8 grid grid-cols-1 lg:grid-cols-12 gap-10">
         
         {/* Sidebar */}
-        <aside className="lg:col-span-2 space-y-10">
+        <aside className="lg:col-span-2 space-y-8">
           <div className="space-y-4">
             <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-[#0052FF] transition-colors" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 group-focus-within:text-[#0052FF] transition-colors" />
               <Input 
                 placeholder="Search markets..." 
-                className="pl-12 h-14 bg-white border-slate-200 rounded-2xl focus-visible:ring-[#0052FF] font-semibold shadow-sm"
+                className="pl-12 h-14 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-2xl focus-visible:ring-[#0052FF] text-slate-900 dark:text-slate-100 font-semibold shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -563,13 +689,13 @@ export default function App() {
           </div>
 
           <div className="space-y-6">
-            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
+            <h3 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] flex items-center gap-3">
               <Filter className="w-4 h-4" /> Categories
             </h3>
             <div className="space-y-2">
               <button 
                 onClick={() => { setViewMode('Markets'); setActiveCategory('All'); }}
-                className={`w-full text-left px-5 py-4 rounded-2xl text-sm font-black transition-all flex justify-between items-center group ${viewMode === 'Markets' && activeCategory === 'All' ? 'bg-[#0052FF] text-white shadow-xl shadow-blue-200' : 'hover:bg-white text-slate-500'}`}
+                className={`w-full text-left px-5 py-4 rounded-2xl text-sm font-black transition-all flex justify-between items-center group ${viewMode === 'Markets' && activeCategory === 'All' ? 'bg-[#0052FF] text-white shadow-xl shadow-blue-200 dark:shadow-none' : 'hover:bg-white dark:hover:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:shadow-sm'}`}
               >
                 All Markets
               </button>
@@ -577,7 +703,7 @@ export default function App() {
                 <button 
                   key={cat}
                   onClick={() => { setViewMode('Markets'); setActiveCategory(cat); }}
-                  className={`w-full text-left px-5 py-4 rounded-2xl text-sm font-black transition-all flex justify-between items-center group ${viewMode === 'Markets' && activeCategory === cat ? 'bg-[#0052FF] text-white shadow-xl shadow-blue-200' : 'hover:bg-white text-slate-500'}`}
+                  className={`w-full text-left px-5 py-4 rounded-2xl text-sm font-black transition-all flex justify-between items-center group ${viewMode === 'Markets' && activeCategory === cat ? 'bg-[#0052FF] text-white shadow-xl shadow-blue-200 dark:shadow-none' : 'hover:bg-white dark:hover:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:shadow-sm'}`}
                 >
                   {cat}
                   <ChevronRight className={`w-4 h-4 transition-transform ${activeCategory === cat ? 'translate-x-1' : 'opacity-0 group-hover:opacity-100'}`} />
@@ -586,16 +712,36 @@ export default function App() {
             </div>
           </div>
 
-          <Card className="bg-white border-slate-200 rounded-[2rem] overflow-hidden shadow-sm">
+          <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden shadow-sm transition-colors duration-300">
             <div className="h-24 bg-gradient-to-br from-blue-600 to-blue-400 p-6 flex flex-col justify-end">
               <span className="text-[10px] font-bold text-blue-100 uppercase tracking-widest">New Feature</span>
               <h4 className="text-sm font-bold text-white">Advanced Analytics</h4>
             </div>
             <CardContent className="p-6 space-y-3">
-              <p className="text-xs text-slate-500 leading-relaxed font-medium">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
                 Get real-time probability shifts and historical volume data for every market.
               </p>
               <Button variant="link" className="p-0 h-auto text-xs font-bold text-[#0052FF]">Learn more</Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-50 dark:bg-slate-900/40 border-dashed border-2 border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden transition-colors duration-300">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-[#0052FF]">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-black text-slate-800 dark:text-slate-200">Got an idea?</h4>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+                Suggest new prediction topics for BetNova to our admins.
+              </p>
+              <Button 
+                onClick={() => setShowSuggestModal(true)} 
+                className="w-full rounded-xl bg-[#0052FF] hover:bg-blue-700 text-white font-black text-xs h-10 shadow-sm"
+              >
+                Suggest Topic
+              </Button>
             </CardContent>
           </Card>
         </aside>
@@ -617,19 +763,19 @@ export default function App() {
               {loading ? (
                 <div className="space-y-8">
                   {[1, 2, 3].map(i => (
-                    <div key={i} className="h-64 bg-white animate-pulse rounded-[2.5rem] border border-slate-100" />
+                    <div key={i} className="h-64 bg-white dark:bg-slate-900 animate-pulse rounded-[2.5rem] border border-slate-100 dark:border-slate-800" />
                   ))}
                 </div>
               ) : filteredMarkets.length === 0 ? (
-                <div className="text-center py-40 space-y-8 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-                  <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
+                <div className="text-center py-40 space-y-8 bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
+                  <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto">
                     <Search className="w-12 h-12 text-slate-300" />
                   </div>
                   <div className="space-y-3">
-                    <p className="text-2xl font-black text-slate-900">No markets found</p>
-                    <p className="text-slate-500 font-bold">Try a different search term or category</p>
+                    <p className="text-2xl font-black text-slate-900 dark:text-white">No markets found</p>
+                    <p className="text-slate-500 dark:text-slate-400 font-bold">Try a different search term or category</p>
                   </div>
-                  <Button variant="outline" className="rounded-2xl h-12 px-8 font-black" onClick={() => { setSearchQuery(''); setActiveCategory('All'); }}>Reset Filters</Button>
+                  <Button variant="outline" className="rounded-2xl h-12 px-8 font-black border-slate-200 dark:border-slate-700" onClick={() => { setSearchQuery(''); setActiveCategory('All'); }}>Reset Filters</Button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-8">
@@ -639,12 +785,12 @@ export default function App() {
                       key={market.id}
                       initial={{ opacity: 0, y: 30 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden hover:border-[#0052FF] hover:shadow-2xl hover:shadow-blue-100/40 transition-all group cursor-pointer"
+                      className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 overflow-hidden hover:border-[#0052FF] dark:hover:border-blue-500 hover:shadow-2xl hover:shadow-blue-100/40 dark:hover:shadow-none transition-all group cursor-pointer"
                       onClick={() => setSelectedMarket(market)}
                     >
                       <div className="flex flex-col md:flex-row">
                         <div className="w-full md:w-64 h-64 md:h-auto relative overflow-hidden">
-                          <MarketImage src={market.imageUrl} alt={market.title} />
+                           <MarketImage src={market.imageUrl} alt={market.title} />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
                             <Badge className="w-fit bg-white/20 backdrop-blur-xl text-white border-white/30 text-[10px] uppercase font-black tracking-widest py-1.5 px-3">
                               {market.category}
@@ -665,26 +811,26 @@ export default function App() {
                                 </span>
                               </div>
                             </div>
-                            <h3 className="font-black text-2xl leading-tight text-slate-900 group-hover:text-[#0052FF] transition-colors">{market.title}</h3>
+                            <h3 className="font-black text-2xl leading-tight text-slate-900 dark:text-slate-100 group-hover:text-[#0052FF] dark:group-hover:text-blue-400 transition-colors">{market.title}</h3>
                           </div>
 
                           <div className="flex items-center justify-between gap-6">
                             <div className="flex items-center gap-10">
                               <div className="space-y-1.5">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Probability</p>
-                                <p className="text-xl font-black text-emerald-600 flex items-center gap-1.5">
+                                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
                                   <Percent className="w-4 h-4" /> {market.probability}%
                                 </p>
                               </div>
                               <div className="space-y-1.5">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Volume</p>
-                                <p className="text-xl font-black text-slate-900">{formatCurrency(market.volume)}</p>
+                                <p className="text-xl font-black text-slate-900 dark:text-slate-100">{formatCurrency(market.volume)}</p>
                               </div>
                             </div>
 
                             <div className="flex gap-4 items-center">
                               <Button 
-                                className="flex bg-[#0052FF] hover:bg-blue-700 text-white font-black rounded-2xl px-8 h-16 shadow-xl shadow-blue-100 gap-2 text-lg"
+                                className="flex bg-[#0052FF] hover:bg-blue-700 text-white font-black rounded-2xl px-8 h-16 shadow-xl shadow-blue-100 dark:shadow-none gap-2 text-lg"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   console.log('Trade button clicked', market.id);
@@ -703,7 +849,7 @@ export default function App() {
                                     setSelectedMarket(market);
                                     setBetSide('YES');
                                   }}
-                                  className="w-28 h-16 rounded-2xl bg-emerald-50 border-2 border-emerald-200 text-emerald-600 flex flex-col items-center justify-center font-black hover:bg-emerald-600 hover:text-white transition-all group/btn shadow-sm hover:shadow-emerald-200 hover:shadow-xl"
+                                  className="w-28 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-200 dark:border-emerald-800/40 text-emerald-600 dark:text-emerald-400 flex flex-col items-center justify-center font-black hover:bg-emerald-600 hover:text-white dark:hover:text-white transition-all group/btn shadow-sm hover:shadow-emerald-200 dark:hover:shadow-none hover:shadow-xl"
                                 >
                                   <div className="flex items-center gap-1">
                                     <ArrowUp className="w-4 h-4 group-hover/btn:-translate-y-1 transition-transform" />
@@ -722,7 +868,7 @@ export default function App() {
                                     setSelectedMarket(market);
                                     setBetSide('NO');
                                   }}
-                                  className="w-28 h-16 rounded-2xl bg-red-50 border-2 border-red-200 text-red-600 flex flex-col items-center justify-center font-black hover:bg-red-600 hover:text-white transition-all group/btn shadow-sm hover:shadow-red-200 hover:shadow-xl"
+                                  className="w-28 h-16 rounded-2xl bg-red-50 dark:bg-red-950/20 border-2 border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 flex flex-col items-center justify-center font-black hover:bg-red-600 hover:text-white dark:hover:text-white transition-all group/btn shadow-sm hover:shadow-red-200 dark:hover:shadow-none hover:shadow-xl"
                                 >
                                   <div className="flex items-center gap-1">
                                     <ArrowDown className="w-4 h-4 group-hover/btn:translate-y-1 transition-transform" />
@@ -747,18 +893,18 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="space-y-2">
                   <h2 className="text-4xl font-black tracking-tight">My Bets</h2>
-                  <p className="text-slate-500 font-bold">Track your active positions and historical performance</p>
+                  <p className="text-slate-500 dark:text-slate-400 font-bold">Track your active positions and historical performance</p>
                 </div>
               </div>
 
               {user.portfolio.length === 0 ? (
-                <div className="text-center py-40 space-y-8 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-                  <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto">
+                <div className="text-center py-40 space-y-8 bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
+                  <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto">
                     <HistoryIcon className="w-12 h-12 text-slate-300" />
                   </div>
                   <div className="space-y-3">
-                    <p className="text-2xl font-black text-slate-900">No active bets</p>
-                    <p className="text-slate-500 font-bold">Your predictions will appear here once you place a bet</p>
+                    <p className="text-2xl font-black text-slate-900 dark:text-white">No active bets</p>
+                    <p className="text-slate-500 dark:text-slate-400 font-bold">Your predictions will appear here once you place a bet</p>
                   </div>
                   <Button className="rounded-2xl h-12 px-8 font-black bg-[#0052FF]" onClick={() => setViewMode('Markets')}>Browse Markets</Button>
                 </div>
@@ -767,32 +913,32 @@ export default function App() {
                   {user.portfolio.map(bet => {
                     const market = markets.find(m => m.id === bet.marketId);
                     return (
-                      <Card key={bet.id} className="bg-white border-slate-200 rounded-[2rem] overflow-hidden hover:shadow-xl transition-all">
+                      <Card key={bet.id} className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden hover:shadow-xl transition-all">
                         <CardContent className="p-8 flex items-center justify-between">
                           <div className="flex items-center gap-6">
-                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-black text-xl ${bet.side === 'YES' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-black text-xl ${bet.side === 'YES' ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400'}`}>
                               {bet.side}
                             </div>
                             <div className="space-y-1">
-                              <h4 className="font-black text-lg text-slate-900">{market?.title || 'Closed Market'}</h4>
+                              <h4 className="font-black text-lg text-slate-900 dark:text-slate-100">{market?.title || 'Closed Market'}</h4>
                               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Placed on {new Date(bet.placedAt).toLocaleDateString()}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-12">
                             <div className="text-right">
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stake</p>
-                              <p className="text-lg font-black text-slate-900">{formatCurrency(bet.amount)}</p>
+                              <p className="text-lg font-black text-slate-900 dark:text-slate-100">{formatCurrency(bet.amount)}</p>
                             </div>
                             <div className="text-right">
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Odds</p>
-                              <p className="text-lg font-black text-slate-900">{bet.odds}x</p>
+                              <p className="text-lg font-black text-slate-900 dark:text-slate-100">{bet.odds}x</p>
                             </div>
                             <div className="text-right">
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Potential Payout</p>
-                              <p className="text-lg font-black text-emerald-600">{formatCurrency(bet.amount * bet.odds)}</p>
+                              <p className="text-lg font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(bet.amount * bet.odds)}</p>
                             </div>
                             <Button 
-                              className="bg-[#0052FF] hover:bg-blue-700 text-white font-black rounded-xl px-6 h-12 shadow-lg shadow-blue-100"
+                              className="bg-[#0052FF] hover:bg-blue-700 text-white font-black rounded-xl px-6 h-12 shadow-lg shadow-blue-100 dark:shadow-none"
                               onClick={() => {
                                 if (market) {
                                   setSelectedMarket(market);
@@ -817,30 +963,109 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="space-y-2">
                   <h2 className="text-4xl font-black tracking-tight">Leaderboard</h2>
-                  <p className="text-slate-500 font-bold">Top predictors by total profit this season</p>
+                  <p className="text-slate-500 dark:text-slate-400 font-bold">Top predictors by total profit this season</p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-[3rem] border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50">
-                <div className="p-8 border-b border-slate-100 bg-slate-50/50 grid grid-cols-12 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+              <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-none transition-colors duration-300">
+                <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 grid grid-cols-12 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
                   <div className="col-span-1">Rank</div>
                   <div className="col-span-5">Trader</div>
                   <div className="col-span-3 text-right">Total Profit</div>
                   <div className="col-span-3 text-right">Win Rate</div>
                 </div>
-                <div className="divide-y divide-slate-50">
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {leaderboard.map((entry) => (
-                    <div key={entry.rank} className="p-8 grid grid-cols-12 items-center hover:bg-slate-50/50 transition-colors">
-                      <div className="col-span-1 font-black text-lg text-slate-400">#{entry.rank}</div>
+                    <div key={entry.rank} className="p-8 grid grid-cols-12 items-center hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                      <div className="col-span-1 font-black text-lg text-slate-400 dark:text-slate-500">#{entry.rank}</div>
                       <div className="col-span-5 flex items-center gap-4">
-                        <img src={entry.avatar} alt={entry.username} className="w-12 h-12 rounded-2xl bg-slate-100" />
-                        <span className="font-black text-lg text-slate-900">{entry.username}</span>
+                        <img src={entry.avatar} alt={entry.username} className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800" />
+                        <span className="font-black text-lg text-slate-900 dark:text-slate-100">{entry.username}</span>
                       </div>
-                      <div className="col-span-3 text-right font-black text-lg text-emerald-600">+{formatCurrency(entry.profit)}</div>
-                      <div className="col-span-3 text-right font-black text-lg text-slate-900">{entry.winRate}%</div>
+                      <div className="col-span-3 text-right font-black text-lg text-emerald-600 dark:text-emerald-400">+{formatCurrency(entry.profit)}</div>
+                      <div className="col-span-3 text-right font-black text-lg text-slate-900 dark:text-slate-100">{entry.winRate}%</div>
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {viewMode === 'Chat' && (
+            <div className="space-y-8 flex flex-col h-[75vh]">
+              <div className="space-y-2 shrink-0">
+                <h2 className="text-4xl font-black tracking-tight flex items-center gap-3">
+                  <MessageSquare className="w-10 h-10 text-[#0052FF]" /> Social Lounge
+                </h2>
+                <p className="text-slate-500 dark:text-slate-400 font-bold">
+                  Discuss strategies, ongoing bets, and hot news with active BetNova traders in real time!
+                </p>
+              </div>
+
+              <div className="flex-1 min-h-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[3rem] shadow-xl overflow-hidden flex flex-col transition-colors duration-300">
+                {/* Chat header statistics */}
+                <div className="px-8 py-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 shrink-0 flex items-center justify-between text-xs font-black">
+                  <span className="text-[#0052FF] flex items-center gap-2 uppercase tracking-widest">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Live Discussion
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono">
+                    {chatMessages.length} messages shared this week
+                  </span>
+                </div>
+
+                {/* Messages body scrolling */}
+                <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                  {chatMessages.length === 0 ? (
+                    <div className="text-center py-20 space-y-4">
+                      <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto text-slate-350">
+                        <MessageSquare className="w-8 h-8" />
+                      </div>
+                      <p className="text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest text-xs">No lounge messages yet. Start the conversation!</p>
+                    </div>
+                  ) : (
+                    chatMessages.map((msg) => {
+                      const isMe = msg.userEmail === user.email;
+                      return (
+                        <div key={msg.id} className={`flex items-start gap-4 ${isMe ? 'flex-row-reverse' : ''}`}>
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm uppercase shrink-0 ${isMe ? 'bg-[#0052FF] text-white' : 'bg-slate-150 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+                            {msg.userEmail ? msg.userEmail[0] : '?'}
+                          </div>
+                          <div className={`space-y-1.5 max-w-[70%] ${isMe ? 'text-right' : ''}`}>
+                            <div className={`flex items-center gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
+                              <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">{msg.username}</span>
+                              <span className="text-[9px] font-bold text-slate-300 dark:text-slate-600">
+                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <div className={`p-4 rounded-3xl text-sm font-semibold leading-relaxed text-left ${isMe ? 'bg-[#0052FF] text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-850 dark:text-slate-200 rounded-tl-none'}`}>
+                              {msg.text}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Input form */}
+                <form onSubmit={handleSendChatMessage} className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 shrink-0 flex gap-4">
+                  <Input 
+                    type="text" 
+                    placeholder={user.uid ? "Type a lounge message..." : "Please log in to chat with other traders"}
+                    disabled={!user.uid || isChatSending}
+                    value={newMsgText}
+                    onChange={(e) => setNewMsgText(e.target.value)}
+                    className="flex-1 h-14 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-[#0052FF] font-medium rounded-2xl shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-slate-100"
+                  />
+                  <Button 
+                    type="submit" 
+                    disabled={!user.uid || !newMsgText.trim() || isChatSending}
+                    className="h-14 px-8 bg-[#0052FF] hover:bg-blue-700 text-white font-black rounded-2xl active:scale-95 transition-all shadow-lg shadow-blue-200 dark:shadow-none flex items-center gap-2 shrink-0"
+                  >
+                    {isChatSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4" />}
+                    <span>Send</span>
+                  </Button>
+                </form>
               </div>
             </div>
           )}
@@ -850,71 +1075,71 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="space-y-2">
                   <h2 className="text-4xl font-black tracking-tight">Admin Dashboard</h2>
-                  <p className="text-slate-500 font-bold">Monitor all platform activity and transactions</p>
+                  <p className="text-slate-500 dark:text-slate-400 font-bold">Monitor all platform activity and transactions</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="rounded-[2rem] border-slate-200 shadow-lg p-8 space-y-4">
-                  <div className="flex items-center gap-4 text-emerald-600">
+                <Card className="rounded-[2rem] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg p-8 space-y-4">
+                  <div className="flex items-center gap-4 text-emerald-600 dark:text-emerald-400">
                     <TrendingUp className="w-8 h-8" />
                     <h4 className="font-black uppercase tracking-widest text-xs">Total Bets</h4>
                   </div>
-                  <p className="text-4xl font-black text-slate-900">{allBets.length}</p>
+                  <p className="text-4xl font-black text-slate-900 dark:text-slate-100">{allBets.length}</p>
                 </Card>
-                <Card className="rounded-[2rem] border-slate-200 shadow-lg p-8 space-y-4">
+                <Card className="rounded-[2rem] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg p-8 space-y-4">
                   <div className="flex items-center gap-4 text-[#0052FF]">
                     <CreditCard className="w-8 h-8" />
                     <h4 className="font-black uppercase tracking-widest text-xs">Total Deposits</h4>
                   </div>
-                  <p className="text-4xl font-black text-slate-900">{allTransactions.length}</p>
+                  <p className="text-4xl font-black text-slate-900 dark:text-slate-100">{allTransactions.length}</p>
                 </Card>
-                <Card className="rounded-[2rem] border-slate-200 shadow-lg p-8 space-y-4">
+                <Card className="rounded-[2rem] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg p-8 space-y-4">
                   <div className="flex items-center gap-4 text-amber-500">
                     <DollarSign className="w-8 h-8" />
                     <h4 className="font-black uppercase tracking-widest text-xs">Total Volume</h4>
                   </div>
-                  <p className="text-4xl font-black text-slate-900">
+                  <p className="text-4xl font-black text-slate-900 dark:text-slate-100">
                     {formatCurrency(allTransactions.reduce((acc, curr) => acc + curr.amount, 0))}
                   </p>
                 </Card>
               </div>
 
               <Tabs defaultValue="bets" className="w-full">
-                <TabsList className="bg-slate-100 p-1.5 rounded-2xl h-16 w-full max-w-md mb-8">
-                  <TabsTrigger value="bets" className="rounded-xl font-black uppercase tracking-widest text-[10px] h-full data-[state=active]:bg-white data-[state=active]:text-[#0052FF] data-[state=active]:shadow-sm">
+                <TabsList className="bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl h-16 w-full max-w-sm mb-8">
+                  <TabsTrigger value="bets" className="rounded-xl font-black uppercase tracking-widest text-[10px] h-full data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-[#0052FF] data-[state=active]:shadow-sm">
                     All Bets
                   </TabsTrigger>
-                  <TabsTrigger value="transactions" className="rounded-xl font-black uppercase tracking-widest text-[10px] h-full data-[state=active]:bg-white data-[state=active]:text-[#0052FF] data-[state=active]:shadow-sm">
+                  <TabsTrigger value="transactions" className="rounded-xl font-black uppercase tracking-widest text-[10px] h-full data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-[#0052FF] data-[state=active]:shadow-sm">
                     Card Transactions
                   </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="bets">
-                  <Card className="rounded-[2.5rem] border-slate-200 shadow-xl overflow-hidden">
+                  <Card className="rounded-[2.5rem] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-slate-50 border-b border-slate-200">
+                        <thead className="bg-slate-50 dark:bg-slate-950/40 border-b border-slate-250 dark:border-slate-800">
                           <tr>
-                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">User</th>
-                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Market</th>
-                            <th className="px-8 py-6 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Side</th>
-                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
-                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Time</th>
+                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">User</th>
+                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Market</th>
+                            <th className="px-8 py-6 text-center text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Side</th>
+                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Amount</th>
+                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Time</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {allBets.map((bet) => (
-                            <tr key={bet.id} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-8 py-6 font-bold text-slate-900">{bet.userEmail}</td>
-                              <td className="px-8 py-6 text-slate-600 text-sm truncate max-w-xs">{bet.marketId}</td>
+                            <tr key={bet.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                              <td className="px-8 py-6 font-bold text-slate-900 dark:text-slate-100">{bet.userEmail}</td>
+                              <td className="px-8 py-6 text-slate-600 dark:text-slate-300 text-sm truncate max-w-xs">{bet.marketId}</td>
                               <td className="px-8 py-6 text-center">
-                                <Badge className={`rounded-lg font-black ${bet.side === 'YES' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                <Badge className={`rounded-lg font-black ${bet.side === 'YES' ? 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400'}`}>
                                   {bet.side}
                                 </Badge>
                               </td>
-                              <td className="px-8 py-6 text-right font-mono font-bold text-slate-900">{formatCurrency(bet.amount)}</td>
-                              <td className="px-8 py-6 text-right text-slate-400 text-xs">{new Date(bet.placedAt).toLocaleString()}</td>
+                              <td className="px-8 py-6 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{formatCurrency(bet.amount)}</td>
+                              <td className="px-8 py-6 text-right text-slate-400 dark:text-slate-500 text-xs">{new Date(bet.placedAt).toLocaleString()}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -924,29 +1149,29 @@ export default function App() {
                 </TabsContent>
 
                 <TabsContent value="transactions">
-                  <Card className="rounded-[2.5rem] border-slate-200 shadow-xl overflow-hidden">
+                  <Card className="rounded-[2.5rem] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full">
-                        <thead className="bg-slate-50 border-b border-slate-200">
+                        <thead className="bg-slate-50 dark:bg-slate-950/40 border-b border-slate-200 dark:border-slate-800">
                           <tr>
-                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">User</th>
-                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Card Details</th>
-                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
-                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Time</th>
+                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">User</th>
+                            <th className="px-8 py-6 text-left text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Card Details</th>
+                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Amount</th>
+                            <th className="px-8 py-6 text-right text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Time</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {allTransactions.map((tx) => (
-                            <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-8 py-6 font-bold text-slate-900">{tx.userEmail}</td>
+                            <tr key={tx.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors">
+                              <td className="px-8 py-6 font-bold text-slate-900 dark:text-slate-100">{tx.userEmail}</td>
                               <td className="px-8 py-6">
                                 <div className="flex flex-col">
-                                  <span className="font-bold text-slate-900">{tx.cardName}</span>
-                                  <span className="text-xs font-mono text-slate-400">{tx.cardNumber} • {tx.cardExpiry}</span>
+                                  <span className="font-bold text-slate-900 dark:text-slate-100">{tx.cardName}</span>
+                                  <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{tx.cardNumber} • {tx.cardExpiry}</span>
                                 </div>
                               </td>
-                              <td className="px-8 py-6 text-right font-mono font-bold text-emerald-600">+{formatCurrency(tx.amount)}</td>
-                              <td className="px-8 py-6 text-right text-slate-400 text-xs">{new Date(tx.timestamp).toLocaleString()}</td>
+                              <td className="px-8 py-6 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(tx.amount)}</td>
+                              <td className="px-8 py-6 text-right text-slate-400 dark:text-slate-500 text-xs">{new Date(tx.timestamp).toLocaleString()}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -961,43 +1186,43 @@ export default function App() {
 
         {/* Right Sidebar */}
         <aside className="lg:col-span-3 space-y-10">
-          <Card className="bg-white border-slate-200 rounded-[2.5rem] shadow-2xl shadow-slate-200/50 overflow-hidden sticky top-24">
-            <CardHeader className="p-8 pb-4 border-b border-slate-50">
-              <CardTitle className="text-xs font-black flex items-center gap-3 text-slate-400 uppercase tracking-[0.3em]">
+          <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-[2.5rem] shadow-2xl shadow-slate-200/50 dark:shadow-none overflow-hidden sticky top-24">
+            <CardHeader className="p-8 pb-4 border-b border-slate-50 dark:border-slate-800">
+              <CardTitle className="text-xs font-black flex items-center gap-3 text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em]">
                 <BarChart3 className="w-5 h-5 text-[#0052FF]" /> Portfolio Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="p-8 bg-slate-50/50 space-y-6">
+              <div className="p-8 bg-slate-50/50 dark:bg-slate-950/20 space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Open Bets</p>
-                    <p className="text-2xl font-black text-slate-900">{user.portfolio.length}</p>
+                    <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Open Bets</p>
+                    <p className="text-2xl font-black text-slate-900 dark:text-slate-100">{user.portfolio.length}</p>
                   </div>
                   <div className="space-y-1.5 text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Profit/Loss</p>
-                    <p className={`text-2xl font-black ${user.balance >= INITIAL_BALANCE ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Profit/Loss</p>
+                    <p className={`text-2xl font-black ${user.balance >= INITIAL_BALANCE ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                       {user.balance >= INITIAL_BALANCE ? '+' : ''}{formatCurrency(user.balance - INITIAL_BALANCE)}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="p-8 bg-white border-t border-slate-50 space-y-4">
+              <div className="p-8 bg-white dark:bg-slate-900 border-t border-slate-50 dark:border-slate-800 space-y-4">
                 <div className="flex justify-between text-xs font-black">
-                  <span className="text-slate-400 uppercase tracking-widest">Total Exposure</span>
-                  <span className="text-slate-900">
+                  <span className="text-slate-400 dark:text-slate-500 uppercase tracking-widest">Total Exposure</span>
+                  <span className="text-slate-900 dark:text-slate-100">
                     {formatCurrency(user.portfolio.reduce((acc, b) => acc + b.amount, 0))}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Button 
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl h-14 shadow-xl shadow-emerald-200"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl h-14 shadow-xl shadow-emerald-200 dark:shadow-none"
                     onClick={() => setViewMode('Markets')}
                   >
                     Buy Bets
                   </Button>
-                  <Button variant="outline" className="border-slate-200 text-slate-600 font-black rounded-2xl h-14">
+                  <Button variant="outline" className="border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-black rounded-2xl h-14" onClick={() => setViewMode('Portfolio')}>
                     History
                   </Button>
                 </div>
@@ -1539,6 +1764,95 @@ export default function App() {
                     <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">
                       Your payment is encrypted and secure
                     </p>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Suggest Market Modal */}
+      <AnimatePresence>
+        {showSuggestModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-xl">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 50 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 50 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+            >
+              <div className="p-10 space-y-8">
+                <div className="flex justify-between items-center">
+                  <div className="space-y-1">
+                    <h3 className="font-black text-2xl text-slate-900 dark:text-white">Suggest a Market</h3>
+                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Submit a Hot Prediction Topic</p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => setShowSuggestModal(false)} className="rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <XCircle className="w-6 h-6 text-slate-400" />
+                  </Button>
+                </div>
+
+                <form onSubmit={handleSubmitSuggestion} className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Market Title</label>
+                      <Input 
+                        placeholder="e.g. Will Bitcoin cross $150k in 2026?"
+                        required
+                        value={suggestionTitle}
+                        onChange={(e) => setSuggestionTitle(e.target.value)}
+                        className="h-14 bg-slate-50 dark:bg-slate-950/40 border-transparent focus:bg-white dark:focus:bg-slate-950 focus:border-slate-200 dark:focus:border-slate-800 rounded-2xl font-bold text-slate-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Category</label>
+                      <select 
+                        required
+                        value={suggestionCategory}
+                        onChange={(e) => setSuggestionCategory(e.target.value as any)}
+                        className="w-full h-14 px-4 bg-slate-50 dark:bg-slate-950/40 border-transparent focus:bg-white dark:focus:bg-slate-950 focus:border-slate-200 dark:focus:border-slate-800 rounded-2xl font-bold text-sm text-slate-800 dark:text-slate-100-style"
+                        style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}
+                      >
+                        <option value="Crypto">Crypto</option>
+                        <option value="Tech">Tech</option>
+                        <option value="Sports">Sports</option>
+                        <option value="Pop Culture">Pop Culture</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Why should we list this?</label>
+                      <textarea 
+                        placeholder="Provide details or source material to back up this market..."
+                        required
+                        rows={4}
+                        value={suggestionDesc}
+                        onChange={(e) => setSuggestionDesc(e.target.value)}
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-950/40 border-transparent focus:bg-white dark:focus:bg-slate-950 focus:border-slate-200 dark:focus:border-slate-800 rounded-2xl font-medium text-sm text-slate-850 dark:text-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-4">
+                    <Button 
+                      type="submit"
+                      disabled={isSubmittingSuggestion}
+                      className="w-full h-16 bg-[#0052FF] hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl shadow-blue-100 dark:shadow-none text-lg flex items-center justify-center gap-3"
+                    >
+                      {isSubmittingSuggestion ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-5 h-5" />
+                          Submit Suggestion
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </form>
               </div>
